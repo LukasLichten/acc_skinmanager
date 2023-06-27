@@ -4,6 +4,7 @@ use json::{JsonValue, stringify_pretty};
 
 
 pub mod menu_changer;
+pub mod app_data;
 
 //Folder Strcuture in ACC:
 //User/Documents
@@ -53,6 +54,26 @@ pub fn get_acc_folder() -> PathBuf {
     }
 
     root_path
+}
+
+fn get_config_file(foldername: &str, filename: &str) -> Option<(PathBuf, JsonValue)> {
+    let mut folder = get_acc_folder();
+
+    folder.push(foldername);
+    
+
+    if folder.exists() {
+        folder.push(filename);
+        folder.set_extension(FILE_ENDING);
+
+        if folder.exists() {
+            if let Ok(content) = read_json(folder.as_path()) {
+                return Some((folder, content));
+            }
+        }
+    }
+
+    None
 }
 
 pub fn read_json(file: &Path) -> json::Result<JsonValue>{
