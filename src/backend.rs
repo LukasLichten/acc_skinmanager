@@ -2,7 +2,7 @@ use std::{path::{PathBuf, Path}, fs};
 
 use json::{JsonValue, stringify_pretty};
 
-
+pub mod livery_ops;
 pub mod menu_changer;
 pub mod app_data;
 
@@ -28,8 +28,6 @@ pub mod app_data;
 
 
 pub const ACC_ROOT_FOLDER_NAME: &str = "Assetto Corsa Competizione";
-pub const ACC_CAR_FOLDER_NAME: &str = "Cars";
-pub const ACC_LIVERY_FOLDER_NAME: &str = "Liveries";
 
 pub const DATE_FORMAT_STR: &str = "%Y.%m.%d";
 
@@ -74,6 +72,14 @@ fn get_config_file(foldername: &str, filename: &str) -> Option<(PathBuf, JsonVal
     }
 
     None
+}
+
+pub fn read_json_from_bytes(data: Vec<u8>) -> json::Result<JsonValue> {
+    if let Ok(text) = String::from_utf8(data) {
+        return json::parse(text.as_str());
+    }
+
+    Err(json::Error::WrongType("File System Error".to_string()))
 }
 
 pub fn read_json(file: &Path) -> json::Result<JsonValue>{
