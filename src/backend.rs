@@ -5,6 +5,7 @@ use json::{JsonValue, stringify_pretty};
 pub mod livery_ops;
 pub mod menu_changer;
 pub mod app_data;
+pub mod cli;
 
 //Folder Strcuture in ACC:
 //User/Documents
@@ -76,6 +77,7 @@ fn get_config_file(foldername: &str, filename: &str) -> Option<(PathBuf, JsonVal
 
 pub fn read_json_from_bytes(data: Vec<u8>) -> json::Result<JsonValue> {
     if let Ok(text) = String::from_utf8(data) {
+        let text = text.replace("\u{0}", "");
         return json::parse(text.as_str());
     }
 
@@ -93,6 +95,10 @@ pub fn read_json(file: &Path) -> json::Result<JsonValue>{
 
 pub fn write_json(file: &Path, data: JsonValue) -> Result<(), std::io::Error> {
     fs::write(file, stringify_pretty(data, 4))
+}
+
+pub fn get_filename(path: &PathBuf) -> String {
+    path.file_name().expect("there must be at least a file name").to_str().expect("osstr to str should always work").to_string()
 }
 
 trait SafeRead {

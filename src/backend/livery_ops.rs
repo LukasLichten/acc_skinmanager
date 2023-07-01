@@ -74,9 +74,9 @@ pub fn get_zip_content(zip_file: &PathBuf) -> Option<Vec<ZipLiveryContent>> {
                 if zip_extensions::read::zip_extract_file_to_memory(zip_file, &internal_path, &mut data).is_ok() {
 
                     // 
-                    let name = get_filename(&internal_path);
+                    let name = super::get_filename(&internal_path);
                     let upper = if internal_path.pop() && internal_path.file_name().is_some() {
-                        let folder_name = get_filename(&internal_path);
+                        let folder_name = super::get_filename(&internal_path);
 
                         match folder_name.to_lowercase().as_str() {
                             "cars" => CustomFolder::Cars,
@@ -85,7 +85,7 @@ pub fn get_zip_content(zip_file: &PathBuf) -> Option<Vec<ZipLiveryContent>> {
                     } else {
                         let mut origin_file = zip_file.clone();
                         origin_file.set_extension("");
-                        CustomFolder::Liveries(get_filename(&origin_file))
+                        CustomFolder::Liveries(super::get_filename(&origin_file))
                     };
 
 
@@ -100,9 +100,7 @@ pub fn get_zip_content(zip_file: &PathBuf) -> Option<Vec<ZipLiveryContent>> {
     None
 }
 
-fn get_filename(path: &PathBuf) -> String {
-    path.file_name().expect("there must be at least a file name").to_str().expect("osstr to str should always work").to_string()
-}
+
 
 #[derive(Debug,Clone)]
 pub struct Livery {
