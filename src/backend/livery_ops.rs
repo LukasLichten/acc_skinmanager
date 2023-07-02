@@ -1,6 +1,6 @@
-use std::{path::PathBuf, fs, io::{Cursor, self}};
+use std::{path::PathBuf, fs::{self, File}, io::{Cursor, self, Write}};
 
-use super::SafeRead;
+use super::{SafeRead, get_filename};
 
 pub const ACC_TEMP_FOLDER:&str = "temp";
 
@@ -32,7 +32,7 @@ pub enum CustomFolder {
 impl ToString for CustomFolder {
     fn to_string(&self) -> String {
         if let CustomFolder::Liveries(folder) = self {
-            format!("{}/{}", ACC_LIVERY_FOLDER_NAME, folder)
+            format!("{}\\{}", ACC_LIVERY_FOLDER_NAME, folder)
         } else {
             format!("{}", ACC_CAR_FOLDER_NAME)
         }
@@ -56,6 +56,53 @@ impl ZipLiveryContent {
 
         file
     }
+
+    pub fn get_interal_path(& self) -> String {
+        let mut file = PathBuf::new();
+        file.push(self.upper.to_string());
+        file.push(&self.name);
+
+        file.to_str().expect("it must be a string").to_string()
+    }
+}
+
+pub fn get_car_file(car: &String) -> Option<ZipLiveryContent> {
+    let mut name = PathBuf::from(car);
+    name.set_extension(".json");
+    let name = get_filename(&name);
+
+    let file = ZipLiveryContent { upper: CustomFolder::Cars, name, file: Vec::<u8>::new()};
+    if file.get_target().exists() {
+        if let Ok(content) = fs::read(file.get_target()) {
+            return Some(ZipLiveryContent { upper: file.upper, name: file.name, file: content});
+        }
+    }
+
+    None
+}
+
+pub fn get_livery_files(livery: &String) -> Option<Vec<ZipLiveryContent>> {
+    let mut folder = super::get_acc_folder();
+
+    folder.push(ACC_CUSTOMS_FOLDER_NAME);
+    folder.push(ACC_LIVERY_FOLDER_NAME);
+    folder.push(&livery);
+
+    if !folder.exists() || folder.is_file() {
+        return None;
+    }
+
+    let mut output = Vec::<ZipLiveryContent>::new();
+
+    if let Ok(mut folder_content) = folder.read_dir() {
+        while let Some(Ok(item)) = folder_content.next() {
+            if let Ok(content) = fs::read(item.path()) {
+                output.push(ZipLiveryContent { upper: CustomFolder::Liveries(livery.clone()), name: item.file_name().to_str().expect("it is a string").to_string(), file: content});
+            }
+        }  
+    }
+
+    return Some(output);
 }
 
 pub fn get_zip_content(zip_file: &PathBuf) -> Option<Vec<ZipLiveryContent>> {
@@ -100,7 +147,37 @@ pub fn get_zip_content(zip_file: &PathBuf) -> Option<Vec<ZipLiveryContent>> {
     None
 }
 
+pub fn read_car_for_livery_folder(car_json: &ZipLiveryContent) -> Option<String> {
+    if let Ok(parsed_json) = super::read_json_from_bytes(car_json.file.clone()) {
+        // We get the livery folder from the car.json, if not found we just add the livery
+        if let Some(target_foldername) = parsed_json.get("customSkinName") {
+            if let Some(target_foldername) = target_foldername.as_str() {
+                return Some(target_foldername.to_string());
+            }
+        }
+    }
+    
+    None
+}
 
+pub fn get_all_car_json() -> Vec<ZipLiveryContent> {
+    let mut folder = super::get_acc_folder();
+
+    folder.push(ACC_CUSTOMS_FOLDER_NAME);
+    folder.push(ACC_CAR_FOLDER_NAME);
+
+    let mut output = Vec::<ZipLiveryContent>::new();
+
+    if let Ok(mut folder_content) = folder.read_dir() {
+        while let Some(Ok(item)) = folder_content.next() {
+            if let Ok(content) = fs::read(item.path()) {
+                output.push(ZipLiveryContent { upper: CustomFolder::Cars, name: item.file_name().to_str().expect("it is a string").to_string(), file: content});
+            }
+        }  
+    }
+
+    output
+}
 
 #[derive(Debug,Clone)]
 pub struct Livery {
@@ -184,41 +261,33 @@ pub fn group_up(mut files: Vec<ZipLiveryContent>) -> Vec<Livery> {
 
     while let Some(item) = files.pop() {
         if let CustomFolder::Cars = item.upper {
-            if let Ok(parsed_json) = super::read_json_from_bytes(item.file.clone()) {
-                // We get the livery folder from the car.json, if not found we just add the livery
-                if let Some(target_foldername) = parsed_json.get("customSkinName") {
-                    if let Some(target_foldername) = target_foldername.as_str() {
-                        let target_foldername = target_foldername.to_string();
-                        let mut found = false;
 
-                        // We attempt finding a livery group that exists already
-                        let mut iter = liveries.iter_mut();
-                        while let Some(liver) = iter.next() {
-                            if liver.car_json.is_none() { // We only add one, even if this could technically happen
-                                if let Some(liver_folder) = liver.livery_folder.clone() {
 
-                                    // Looking for the match
-                                    if liver_folder == target_foldername {
-                                        liver.car_json = Some(item.clone());
-                                        found = true;
-                                        break;
-                                    }
-                                }
+            if let Some(target_foldername) = read_car_for_livery_folder(&item) {
+                let mut found = false;
+
+                // We attempt finding a livery group that exists already
+                let mut iter = liveries.iter_mut();
+                while let Some(liver) = iter.next() {
+                    if liver.car_json.is_none() { // We only add one, even if this could technically happen
+                        if let Some(liver_folder) = liver.livery_folder.clone() {
+
+                            // Looking for the match
+                            if liver_folder == target_foldername {
+                                liver.car_json = Some(item.clone());
+                                found = true;
+                                break;
                             }
                         }
-
-                        if !found {
-                            liveries.push(Livery { livery_folder: Some(target_foldername), car_json: Some(item), livery_files: Vec::<ZipLiveryContent>::new() });
-                        }
-                    } else {
-                        liveries.push(Livery { livery_folder: None, car_json: Some(item), livery_files: Vec::<ZipLiveryContent>::new() });
                     }
-                } else {
-                    liveries.push(Livery { livery_folder: None, car_json: Some(item), livery_files: Vec::<ZipLiveryContent>::new() });
-                };
+                }
+                
+                if !found { // Livery group not found, we create a new one
+                    liveries.push(Livery { livery_folder: Some(target_foldername), car_json: Some(item), livery_files: Vec::<ZipLiveryContent>::new() });
+                }
+            } else {
+                liveries.push(Livery { livery_folder: None, car_json: Some(item), livery_files: Vec::<ZipLiveryContent>::new() });
             }
-            
-            
         } else if let CustomFolder::Liveries(target_foldername) = item.upper.clone() {
             let mut found = false;
             
@@ -279,3 +348,37 @@ pub fn group_up(mut files: Vec<ZipLiveryContent>) -> Vec<Livery> {
 //     "customSkinName": "#2_TeamIris_992",
 //     "bannerTemplateKey": 2
 // }
+
+pub fn write_livery_in_zip(livery: Livery) -> io::Result<String> {
+    let target_name = if let Some(liver) = livery.livery_folder.clone() {
+        liver
+    } else {
+        if let Some(car) = &livery.car_json {
+            car.name.clone()
+        } else {
+            String::new()
+        }
+    };
+    let target_name = format!("{}.zip", target_name);
+
+
+    let buffer = File::create(&target_name)?;
+    let mut writer = zip::ZipWriter::new(buffer);
+    
+    if let Some(car) = livery.car_json {
+        writer.start_file(car.get_interal_path(), zip::write::FileOptions::default())?;
+        writer.write_all(car.file.as_slice())?;
+    }
+
+    if let Some(_) = livery.livery_folder {
+        for item in livery.livery_files {
+            writer.start_file(item.get_interal_path(), zip::write::FileOptions::default())?;
+            writer.write_all(item.file.as_slice())?;
+        }
+    }
+    
+
+    writer.finish()?;
+    
+    Ok(target_name)
+}

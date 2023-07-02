@@ -16,7 +16,13 @@ struct Args {
     mode: bool,
 
     #[arg(short, long, help = "Installs a zipfile")]
-    install: Option<String>
+    install: Option<String>,
+
+    #[arg(short, long, help = "Export livery into zipfile based on car.json name or livery foldername")]
+    export: Option<String>,
+
+    #[arg(short = 'O', long, help = "exports only the livery folder")]
+    export_only_livery: bool
 }
 
 fn main() {
@@ -46,6 +52,7 @@ fn main() {
 
     // Installing Zipfile 
     if let Some(fil) = args.install {
+        println!("Import...");
         let path = PathBuf::from(fil);
         if let Some(val) = livery_ops::get_zip_content(&path) {
             let results = livery_ops::group_up(val);
@@ -147,6 +154,73 @@ fn main() {
 
         println!("Finished!");
 
+        return;
+    }
+
+    //Extract Liveryfile
+    if let Some(name) = args.export {
+        print!("Export: Trying to find {}... ", &name);
+
+        let bundle = if let Some(car) = livery_ops::get_car_file(&name) {
+            let (folder, content) = if let Some(folder) = livery_ops::read_car_for_livery_folder(&car) {
+                if let Some(content) = livery_ops::get_livery_files(&folder) {
+                    (Some(folder), content)
+                } else {
+                    (None, Vec::<livery_ops::ZipLiveryContent>::new())
+                }
+            } else {
+                (None, Vec::<livery_ops::ZipLiveryContent>::new())
+            };
+
+            // Handling export flag
+            if !args.export_only_livery {
+                Livery {car_json: Some(car), livery_folder: folder, livery_files: content}
+            } else {
+                Livery {car_json: None, livery_folder: folder, livery_files: content}
+            }
+        } else if let Some(content) = livery_ops::get_livery_files(&name) {
+            //Challenge: we need to find the car_json that contains our folder
+
+            //Except when we don't:
+            if args.export_only_livery {
+                Livery {car_json: None, livery_folder: Some(name.clone()), livery_files: content}
+            } else {
+                let all_cars = livery_ops::get_all_car_json();
+
+                let mut car = None;
+
+                // We go through all car.json to find one which points to this folder 
+                for item in all_cars {
+                    if let Some(folder) = livery_ops::read_car_for_livery_folder(&item) {
+                        if folder == name {
+                            car = Some(item);
+                            break;
+                        }
+                    }
+                }
+                
+                Livery {car_json: car, livery_folder: Some(name.clone()), livery_files: content }
+            }
+        } else {
+            panic!("No file or folder found!");
+        };
+
+        println!("FOUND!");
+
+        if bundle.car_json.is_none() && bundle.livery_files.is_empty() {
+            // Odd case when car.json is found, but not included due to only exporting livery files
+            panic!("{} exists as a car.json, but no livery files could be found, exiting", name);
+        }
+
+
+        //Completing the export
+        if let Ok(target_name) = livery_ops::write_livery_in_zip(bundle) {
+            println!("Exported {} successfully!", target_name);
+        } else {
+            panic!("error while trying to create zip file");
+        }
+
+        
         return;
     }
 
