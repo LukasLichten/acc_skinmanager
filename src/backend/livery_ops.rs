@@ -1,5 +1,7 @@
 use std::{path::PathBuf, fs::{self, File}, io::{Cursor, self, Write}};
 
+use indicatif::{ProgressBar, ProgressStyle};
+
 use super::{SafeRead, get_filename};
 
 pub const ACC_TEMP_FOLDER:&str = "temp";
@@ -68,7 +70,7 @@ impl ZipLiveryContent {
 
 pub fn get_car_file(car: &String) -> Option<ZipLiveryContent> {
     let mut name = PathBuf::from(car);
-    name.set_extension(".json");
+    name.set_extension("json");
     let name = get_filename(&name);
 
     let file = ZipLiveryContent { upper: CustomFolder::Cars, name, file: Vec::<u8>::new()};
@@ -113,6 +115,10 @@ pub fn get_zip_content(zip_file: &PathBuf) -> Option<Vec<ZipLiveryContent>> {
         // Reading the zip
         if let Ok(zip_content) = zip::ZipArchive::new(&mut stream.clone()) {
             let iter = zip_content.file_names();
+            let progressbar = ProgressBar::new(zip_content.len() as u64);
+            progressbar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:50.cyan/blue} {pos:>1}/{len:5}")
+                    .expect("Progress Style is valid (At least when it was typed, an update to indicatif might have broken it)")
+                    .progress_chars("##-"));
 
             // Reading the file
             for item in iter {
@@ -138,7 +144,9 @@ pub fn get_zip_content(zip_file: &PathBuf) -> Option<Vec<ZipLiveryContent>> {
 
                     content.push(ZipLiveryContent { upper, name, file: data });
                 }
+                progressbar.inc(1);
             }
+            progressbar.finish();
 
             return Some(content);
         }
@@ -152,7 +160,11 @@ pub fn read_car_for_livery_folder(car_json: &ZipLiveryContent) -> Option<String>
         // We get the livery folder from the car.json, if not found we just add the livery
         if let Some(target_foldername) = parsed_json.get("customSkinName") {
             if let Some(target_foldername) = target_foldername.as_str() {
-                return Some(target_foldername.to_string());
+                if !target_foldername.is_empty() {
+                    return Some(target_foldername.to_string());
+                } else {
+                    return None;
+                }
             }
         }
     }
@@ -361,22 +373,31 @@ pub fn write_livery_in_zip(livery: Livery) -> io::Result<String> {
     };
     let target_name = format!("{}.zip", target_name);
 
+    println!("Compressing Files...");
+    let progressbar = ProgressBar::new(livery.livery_files.len() as u64 + if livery.car_json.is_some() { 1 } else { 0 });
+    progressbar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:50.cyan/blue} {pos:>1}/{len:5}")
+                    .expect("Progress Style is valid (At least when it was typed, an update to indicatif might have broken it)")
+                    .progress_chars("##-"));
+
 
     let buffer = File::create(&target_name)?;
     let mut writer = zip::ZipWriter::new(buffer);
-    
+
     if let Some(car) = livery.car_json {
         writer.start_file(car.get_interal_path(), zip::write::FileOptions::default())?;
         writer.write_all(car.file.as_slice())?;
+        progressbar.inc(1);
     }
 
     if let Some(_) = livery.livery_folder {
         for item in livery.livery_files {
             writer.start_file(item.get_interal_path(), zip::write::FileOptions::default())?;
             writer.write_all(item.file.as_slice())?;
+            progressbar.inc(1);
         }
     }
-    
+
+    progressbar.finish();
 
     writer.finish()?;
     

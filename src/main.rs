@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use backend::livery_ops;
 use clap::Parser;
+use dialoguer::{Confirm, Input};
+use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::backend::livery_ops::Livery;
 
@@ -54,14 +56,21 @@ fn main() {
     if let Some(fil) = args.install {
         println!("Import...");
         let path = PathBuf::from(fil);
+        println!("Extracting files...");
         if let Some(val) = livery_ops::get_zip_content(&path) {
             let results = livery_ops::group_up(val);
 
             println!("Installing Liveries from archive {}", path.to_str().expect("it has to exist, else there is no path"));
-            println!("{} liveries found\n", results.len());
+            //println!("{} liveries found\n", results.len());
+
+            let progressbar = ProgressBar::new(results.len() as u64);
+            progressbar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:50.cyan/blue} {pos:>1}/{len:5} {msg}")
+                    .expect("Progress Style is valid (At least when it was typed, an update to indicatif might have broken it)")
+                    .progress_chars("##-"));
+            //return;
 
             for item in results {
-                print!("Installing livery {} ", if let Some(liver) = item.livery_folder.clone() {
+                progressbar.set_message(if let Some(liver) = item.livery_folder.clone() {
                     liver
                 } else {
                     if let Some(car) = &item.car_json {
@@ -71,11 +80,11 @@ fn main() {
                     }
                 });
                 
+                
                 fn handle_write(liver: &Livery) {
                     if let Err(e) = liver.write() {
                         panic!("Error occured when writing file: {}", e);
                     }
-                    println!(" DONE!")
                 }
 
                 match item.check_if_conflict() {
@@ -87,10 +96,11 @@ fn main() {
                         // Conflict
                         if carjson_match && folder_conflict {
                             //Both conflict, so offer override
-                            if backend::cli::confirm(format!("Conflict\n{} and livery folder {} already exist\nOverride?",
-                                item.car_json.clone().expect("has to exist to conflict").name, item.livery_folder.clone().expect("has to exist to conflict")).as_str(),
-                                true, "\n", true) {
-                                
+                            println!("Conflict\n{} and livery folder {} already exist",
+                                item.car_json.clone().expect("has to exist to conflict").name,
+                                item.livery_folder.clone().expect("has to exist to conflict"));
+
+                            if Confirm::new().with_prompt("Override?").default(true).interact().unwrap_or(false) {
                                     handle_write(&item);
                             } else {
                                 println!("SKIP");
@@ -102,9 +112,9 @@ fn main() {
                             item.car_json = None;
 
                             // Asking for a new name and testing it
-                            let mut input = PathBuf::from(&car.name);
-                            input.set_extension("");
-                            let mut input = input.to_str().expect("there has to be a filename").to_string();
+                            let mut filename = PathBuf::from(&car.name);
+                            filename.set_extension("");
+                            let mut filename = filename.to_str().expect("there has to be a filename").to_string();
                             
                             let mut base_folder = backend::get_acc_folder();
                             base_folder.push(backend::livery_ops::ACC_CUSTOMS_FOLDER_NAME);
@@ -112,32 +122,43 @@ fn main() {
                             let base_folder = base_folder;
                             
                             let mut target = base_folder.clone();
-                            target.push(&input);
-                            target.set_extension(".json");
+                            target.push(&filename);
+                            target.set_extension("json");
 
-                            while target.exists() {
-                                input = backend::cli::prompt(format!("Conflict\nCar json with the name {} already exists\nRename?",
-                                     &input).as_str(),
-                                     None, false, false, ": ", false);
+                            let mut skip = false;
 
-                                let mut target = base_folder.clone();
-                                target.push(&input);
-                                target.set_extension(".json");
+                            while target.exists() && !skip {
+                                println!("Conflict\nCar json with the name {} already exists", filename);
+
+                                if let Ok(input) = Input::<String>::new().with_prompt("Rename").allow_empty(true).interact_text() {
+                                    if input.is_empty() {
+                                        skip = true;
+                                    }
+
+                                    target = base_folder.clone();
+                                    target.push(&input);
+                                    target.set_extension("json");
+
+                                    filename = input;
+                                } else {
+                                    skip = true;
+                                }
                             }
                             
                             // Editing the car.json
-                            car.name = backend::get_filename(&target);
-                            let alt = Livery {car_json: Some(car), livery_folder: None, livery_files: Vec::<backend::livery_ops::ZipLiveryContent>::new()};
-                            handle_write(&alt);
-                            handle_write(&item); // Item no longer has a car_json, so no more conflict
-
+                            if !skip {
+                                car.name = backend::get_filename(&target);
+                                let alt = Livery {car_json: Some(car), livery_folder: None, livery_files: Vec::<backend::livery_ops::ZipLiveryContent>::new()};
+                                handle_write(&alt);
+                                handle_write(&item); // Item no longer has a car_json, so no more conflict
+                            } else {
+                                println!("SKIP");
+                            }
                         } else /* if folder_conflict */  { // this is the last option
-                            if backend::cli::confirm(format!("Conflict\nLivery folder {} already exist\nOverride?",
-                                item.livery_folder.clone().expect("has to exist to conflict")).as_str(),
-                                true, "\n", true) {
-                                
+                            println!("Conflict\nLivery folder {} already exist", item.livery_folder.clone().expect("has to exist to conflict"));
+
+                            if Confirm::new().with_prompt("Override?").default(true).interact().unwrap_or(false) {
                                     handle_write(&item);
-                                    println!("");
                             } else {
                                 println!("SKIP");
                             }
@@ -145,9 +166,10 @@ fn main() {
                     }
                 }
 
-                
+                progressbar.inc(1);
             }
-
+            progressbar.set_message("DONE");
+            progressbar.finish();
         } else {
             panic!("Failed to read zip file");
         }
@@ -159,7 +181,8 @@ fn main() {
 
     //Extract Liveryfile
     if let Some(name) = args.export {
-        print!("Export: Trying to find {}... ", &name);
+        println!("Export...");
+        print!("Trying to find {}... ", &name);
 
         let bundle = if let Some(car) = livery_ops::get_car_file(&name) {
             let (folder, content) = if let Some(folder) = livery_ops::read_car_for_livery_folder(&car) {
@@ -217,7 +240,7 @@ fn main() {
         if let Ok(target_name) = livery_ops::write_livery_in_zip(bundle) {
             println!("Exported {} successfully!", target_name);
         } else {
-            panic!("error while trying to create zip file");
+            panic!("Error while trying to create zip file");
         }
 
         

@@ -5,7 +5,6 @@ use json::{JsonValue, stringify_pretty};
 pub mod livery_ops;
 pub mod menu_changer;
 pub mod app_data;
-pub mod cli;
 
 //Folder Strcuture in ACC:
 //User/Documents
