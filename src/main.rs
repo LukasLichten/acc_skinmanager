@@ -5,7 +5,7 @@ use clap::Parser;
 use dialoguer::{Confirm, Input};
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::backend::livery_ops::Livery;
+use crate::backend::livery_ops::{Livery, Conflict};
 
 pub mod backend;
 pub mod model;
@@ -88,81 +88,83 @@ fn main() {
                 }
 
                 match item.check_if_conflict() {
-                    None => {
+                    Conflict::None => {
                         // No conflict, continue
                         handle_write(&item);
                     },
-                    Some((carjson_match, folder_conflict)) => {
-                        // Conflict
-                        if carjson_match && folder_conflict {
-                            //Both conflict, so offer override
-                            println!("Conflict\n{} and livery folder {} already exist",
-                                item.car_json.clone().expect("has to exist to conflict").name,
-                                item.livery_folder.clone().expect("has to exist to conflict"));
+                    Conflict::Both => {
+                        //Both conflict, so offer override
+                        println!("Conflict\n{} and livery folder {} already exist",
+                        item.car_json.clone().expect("has to exist to conflict").name,
+                        item.livery_folder.clone().expect("has to exist to conflict"));
 
-                            if Confirm::new().with_prompt("Override?").default(true).interact().unwrap_or(false) {
-                                    handle_write(&item);
-                            } else {
-                                println!("SKIP");
-                            }
-                        } else if carjson_match {
-                            // We take the car json and write it with it's new name
-                            let mut item = item;
-                            let mut car = item.car_json.expect("can't have a conflict if it doesn't exist");
-                            item.car_json = None;
+                        if Confirm::new().with_prompt("Override?").default(true).interact().unwrap_or(false) {
+                            handle_write(&item);
+                        } else {
+                            println!("SKIP");
+                        }
+                    },
+                    Conflict::CarOnly => {
+                        // We take the car json and write it with it's new name
+                        let mut item = item;
+                        let mut car = item.car_json.expect("can't have a conflict if it doesn't exist");
+                        item.car_json = None;
 
-                            // Asking for a new name and testing it
-                            let mut filename = PathBuf::from(&car.name);
-                            filename.set_extension("");
-                            let mut filename = filename.to_str().expect("there has to be a filename").to_string();
-                            
-                            let mut base_folder = backend::get_acc_folder();
-                            base_folder.push(backend::livery_ops::ACC_CUSTOMS_FOLDER_NAME);
-                            base_folder.push(backend::livery_ops::ACC_CAR_FOLDER_NAME);
-                            let base_folder = base_folder;
-                            
-                            let mut target = base_folder.clone();
-                            target.push(&filename);
-                            target.set_extension("json");
+                        // Asking for a new name and testing it
+                        let mut filename = PathBuf::from(&car.name);
+                        filename.set_extension("");
+                        let mut filename = filename.to_str().expect("there has to be a filename").to_string();
+                        
+                        let mut base_folder = backend::get_acc_folder();
+                        base_folder.push(backend::livery_ops::ACC_CUSTOMS_FOLDER_NAME);
+                        base_folder.push(backend::livery_ops::ACC_CAR_FOLDER_NAME);
+                        let base_folder = base_folder;
+                        
+                        let mut target = base_folder.clone();
+                        target.push(&filename);
+                        target.set_extension("json");
 
-                            let mut skip = false;
+                        let mut skip = false;
 
-                            while target.exists() && !skip {
-                                println!("Conflict\nCar json with the name {} already exists", filename);
+                        while target.exists() && !skip {
+                            println!("Conflict\nCar json with the name {} already exists", filename);
 
-                                if let Ok(input) = Input::<String>::new().with_prompt("Rename").allow_empty(true).interact_text() {
-                                    if input.is_empty() {
-                                        skip = true;
-                                    }
-
-                                    target = base_folder.clone();
-                                    target.push(&input);
-                                    target.set_extension("json");
-
-                                    filename = input;
-                                } else {
+                            if let Ok(input) = Input::<String>::new().with_prompt("Rename").allow_empty(true).interact_text() {
+                                if input.is_empty() {
                                     skip = true;
                                 }
-                            }
-                            
-                            // Editing the car.json
-                            if !skip {
-                                car.name = backend::get_filename(&target);
-                                let alt = Livery {car_json: Some(car), livery_folder: None, livery_files: Vec::<backend::livery_ops::ZipLiveryContent>::new()};
-                                handle_write(&alt);
-                                handle_write(&item); // Item no longer has a car_json, so no more conflict
-                            } else {
-                                println!("SKIP");
-                            }
-                        } else /* if folder_conflict */  { // this is the last option
-                            println!("Conflict\nLivery folder {} already exist", item.livery_folder.clone().expect("has to exist to conflict"));
 
-                            if Confirm::new().with_prompt("Override?").default(true).interact().unwrap_or(false) {
-                                    handle_write(&item);
+                                target = base_folder.clone();
+                                target.push(&input);
+                                target.set_extension("json");
+
+                                filename = input;
                             } else {
-                                println!("SKIP");
+                                skip = true;
                             }
                         }
+                        
+                        // Editing the car.json
+                        if !skip {
+                            car.name = backend::get_filename(&target);
+                            let alt = Livery {car_json: Some(car), livery_folder: None, livery_files: Vec::<backend::livery_ops::ZipLiveryContent>::new()};
+                            handle_write(&alt);
+                            handle_write(&item); // Item no longer has a car_json, so no more conflict
+                        } else {
+                            println!("SKIP");
+                        }
+                    },
+                    Conflict::LiveryOnly => {
+                        println!("Conflict\nLivery folder {} already exist", item.livery_folder.clone().expect("has to exist to conflict"));
+
+                        if Confirm::new().with_prompt("Override?").default(true).interact().unwrap_or(false) {
+                            handle_write(&item);
+                        } else {
+                            println!("SKIP");
+                        }
+                    },
+                    Conflict::Identical => {
+                        println!("Already Up-to-date, SKIP");
                     }
                 }
 
