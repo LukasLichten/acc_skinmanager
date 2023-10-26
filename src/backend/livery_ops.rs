@@ -34,7 +34,7 @@ pub enum CustomFolder {
 impl ToString for CustomFolder {
     fn to_string(&self) -> String {
         if let CustomFolder::Liveries(folder) = self {
-            format!("{}\\{}", ACC_LIVERY_FOLDER_NAME, folder)
+            format!("{}/{}", ACC_LIVERY_FOLDER_NAME, folder)
         } else {
             format!("{}", ACC_CAR_FOLDER_NAME)
         }
@@ -89,11 +89,7 @@ impl ZipLiveryContent {
     }
 
     pub fn get_interal_path(& self) -> String {
-        let mut file = PathBuf::new();
-        file.push(self.upper.to_string());
-        file.push(&self.name);
-
-        file.to_str().expect("it must be a string").to_string()
+        format!("{}/{}", self.upper.to_string(), &self.name)
     }
 }
 
