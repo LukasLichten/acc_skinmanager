@@ -91,7 +91,7 @@ pub fn generate() -> bool {
     
     let default_settings = Settings {
         livery_mode_settings: MenuSettings {
-            dds_generation: true,
+            dds_generation: false,
             graphic: GraphicSettings { resolution: (1600, 900), fullscreen: false },
             audio: AudioSettings { master: 0.5, music: 0.0 }
         },

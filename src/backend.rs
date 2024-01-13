@@ -34,7 +34,13 @@ pub const DATE_FORMAT_STR: &str = "%Y.%m.%d";
 pub const FILE_ENDING: &str = "json";
 
 pub fn get_acc_folder() -> PathBuf {
-    let mut root_path = dirs::document_dir().unwrap_or_default();
+    let mut root_path = if cfg!(target_os = "windows") {
+        dirs::document_dir().unwrap_or_default()
+    } else {
+        let mut home = dirs::home_dir().unwrap_or_default();
+        home.push(".local/share/Steam/steamapps/compatdata/805550/pfx/drive_c/users/steamuser/Documents");
+        home
+    };
     root_path.push(ACC_ROOT_FOLDER_NAME);
 
     if !root_path.exists() {
@@ -76,6 +82,9 @@ fn get_config_file(foldername: &str, filename: &str) -> Option<(PathBuf, JsonVal
 
 pub fn read_json_from_bytes(data: Vec<u8>) -> json::Result<JsonValue> {
     if let Ok(text) = String::from_utf8(data) {
+        // We are technically reading utf8 byte strings, so it producess funny results
+        // But there is not convenient way of converting Vec<u8> to Vec<u16>, so just running a
+        // replace is simpler
         let text = text.replace("\u{0}", "");
         return json::parse(text.as_str());
     }
