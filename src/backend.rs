@@ -49,12 +49,16 @@ pub fn get_acc_folder() -> PathBuf {
         if user_dir.is_none() {
             //We are in deep trouble
             panic!("Unable to find user path, therefore not able to access ACC folder");
+        } else if !user_dir.expect("we checked for none already").exists() {
+            panic!("Documents folder does somehow not exist, unable to access ACC folder");
         }
 
         //Seems ACC folder does not exist, lets generate
-        let mut builder = PathBuf::from(user_dir.unwrap());
-
-        builder.push(ACC_ROOT_FOLDER_NAME);
+        if fs::create_dir(root_path.as_path()).is_ok() {
+            println!("ACC folder did not exist, we created the folder, but you should install the game");
+        } else {
+            panic!("Failed to create the ACC folder... Do you have the game installed");
+        }
     }
 
     root_path

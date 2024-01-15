@@ -24,11 +24,29 @@ struct Args {
     export: Option<String>,
 
     #[arg(short = 'O', long, help = "exports only the livery folder")]
-    export_only_livery: bool
+    export_only_livery: bool,
+
+    #[arg(long, help = "opens the Customs folder")]
+    open: bool
 }
 
 fn main() {
     let args = Args::parse();
+    // Opens the folder in your filemanger
+    if args.open {
+        let mut path = backend::get_acc_folder();
+        path.push(backend::livery_ops::ACC_CUSTOMS_FOLDER_NAME);
+        if !path.exists() {
+            panic!("ACC Customs folder is missing!");
+        }
+
+        if let Err(e) = open::that(path) {
+            panic!("Failed to open file path: {}", e);
+        }
+        return;
+    }
+
+
     let mut settings = match backend::app_data::get_settings() {
         Some(set) => set,
         None => {
