@@ -41,6 +41,7 @@ impl ToString for CustomFolder {
     }
 }
 
+#[derive(Debug)]
 pub enum Conflict {
     None,
     CarOnly,
@@ -280,7 +281,7 @@ pub fn get_zip_content(zip_file: &PathBuf) -> Option<Vec<ZipLiveryContent>> {
                     // 
                     let name = super::get_filename(&internal_path);
                     let upper = if internal_path.pop() && internal_path.file_name().is_some() {
-                        let folder_name = super::get_filename(&internal_path);
+                        let folder_name = super::get_filename(&internal_path).trim().to_string();
 
                         match folder_name.to_lowercase().as_str() {
                             "cars" => CustomFolder::Cars,
