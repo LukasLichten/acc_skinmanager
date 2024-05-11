@@ -2,6 +2,8 @@ use std::{path::PathBuf, fs};
 
 use serde::{Serialize, Deserialize};
 
+use crate::State;
+
 use super::menu_changer::{GraphicSettings, AudioSettings, self};
 
 pub const ACC_APP_FOLDER_NAME: &str = "Apps/Skinmanager";
@@ -24,8 +26,8 @@ enum FileType {
     MainSettings
 }
 
-fn get_file_path(file: FileType) -> Option<PathBuf> {
-    let mut folder = super::get_acc_folder();
+fn get_file_path(file: FileType, state: &State) -> Option<PathBuf> {
+    let mut folder = state.root_folder.clone();
 
     folder.push(ACC_APP_FOLDER_NAME);
 
@@ -42,8 +44,8 @@ fn get_file_path(file: FileType) -> Option<PathBuf> {
     None
 }
 
-pub fn get_settings() -> Option<Settings> {
-    if let Some(path) = get_file_path(FileType::MainSettings) {
+pub fn get_settings(state: &State) -> Option<Settings> {
+    if let Some(path) = get_file_path(FileType::MainSettings, state) {
         if let Ok(data) = fs::read_to_string(path.as_path()) {
             if let Ok(settings) = serde_json::from_str(data.as_str()) {
                 return Some(settings);
@@ -51,33 +53,33 @@ pub fn get_settings() -> Option<Settings> {
         }
     } else {
         // Defaults don't exist, so lets generate those
-        if !generate() {
+        if !generate(state) {
             return None;
         }
-        return get_settings();
+        return get_settings(state);
     }
 
     None
 }
 
-pub fn write_settings(settings: Settings) -> bool {
-    if let Some(path) = get_file_path(FileType::MainSettings) {
+pub fn write_settings(settings: Settings, state: &State) -> bool {
+    if let Some(path) = get_file_path(FileType::MainSettings, state) {
         if let Ok(data) = serde_json::to_string_pretty(&settings) {
             return fs::write(path.as_path(), data).is_ok();
         }
     } else {
         // Defaults don't exist, so lets generate those
-        if !generate() {
+        if !generate(state) {
             return false;
         }
-        return write_settings(settings);
+        return write_settings(settings, state);
     }
 
     false
 }
 
-pub fn generate() -> bool {
-    let mut folder = super::get_acc_folder();
+pub fn generate(state: &State) -> bool {
+    let mut folder = state.root_folder.clone();
 
     folder.push(ACC_APP_FOLDER_NAME);
 
@@ -108,20 +110,20 @@ pub fn generate() -> bool {
 }
 
 impl Settings {
-    pub fn switch_liverymode(&mut self) -> Option<bool> {
+    pub fn switch_liverymode(&mut self, state: &State) -> Option<bool> {
         if let Some(backup) = self.backup_settings.clone() {
             // A backup exists, therefore this is to exit liverymode
-            if menu_changer::set_dds_generation(backup.dds_generation).is_some() && menu_changer::set_graphic_settings(backup.graphic).is_some()
-                    && menu_changer::set_audio_settings(backup.audio).is_some() {
+            if menu_changer::set_dds_generation(backup.dds_generation, state).is_some() && menu_changer::set_graphic_settings(backup.graphic, state).is_some()
+                    && menu_changer::set_audio_settings(backup.audio, state).is_some() {
                         self.backup_settings = None;
                         return Some(false);
             }
         } else {
             //We are entering liverymode
             let res = Some(MenuSettings {
-                dds_generation: menu_changer::set_dds_generation(self.livery_mode_settings.dds_generation)?,
-                audio: menu_changer::set_audio_settings(self.livery_mode_settings.audio.clone())?,
-                graphic: menu_changer::set_graphic_settings(self.livery_mode_settings.graphic.clone())?
+                dds_generation: menu_changer::set_dds_generation(self.livery_mode_settings.dds_generation, state)?,
+                audio: menu_changer::set_audio_settings(self.livery_mode_settings.audio.clone(), state)?,
+                graphic: menu_changer::set_graphic_settings(self.livery_mode_settings.graphic.clone(), state)?
             });
 
             if let Some(old_settings) = res {

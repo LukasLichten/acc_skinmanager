@@ -2,6 +2,8 @@ use std::{path::PathBuf, fs::{self, File}, io::{Cursor, self, Write}};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
+use crate::State;
+
 use super::{SafeRead, get_filename};
 
 pub const ACC_TEMP_FOLDER:&str = "temp";
@@ -10,8 +12,8 @@ pub const ACC_CUSTOMS_FOLDER_NAME: &str = "Customs";
 pub const ACC_CAR_FOLDER_NAME: &str = "Cars";
 pub const ACC_LIVERY_FOLDER_NAME: &str = "Liveries";
 
-pub fn get_temp_folder() -> Option<PathBuf> {
-    let mut folder = super::get_acc_folder();
+pub fn get_temp_folder(state: &State) -> Option<PathBuf> {
+    let mut folder = state.root_folder.clone();
 
     folder.push(ACC_TEMP_FOLDER);
     if folder.exists() {
@@ -58,8 +60,8 @@ pub struct ZipLiveryContent {
 }
 
 impl ZipLiveryContent {
-    pub fn get_target(& self) -> PathBuf {
-        let mut file = super::get_acc_folder();
+    pub fn get_target(& self, state: &State) -> PathBuf {
+        let mut file = state.root_folder.clone();
 
         file.push(ACC_CUSTOMS_FOLDER_NAME);
         file.push(self.upper.to_string());
@@ -68,8 +70,8 @@ impl ZipLiveryContent {
         file
     }
 
-    pub fn is_same_as_target(& self) -> bool {
-        if let Ok(content) = fs::read(self.get_target()) {
+    pub fn is_same_as_target(& self, state: &State) -> bool {
+        if let Ok(content) = fs::read(self.get_target(state)) {
             if content.len() != self.file.len() {
                 return false;
             }
@@ -102,14 +104,14 @@ pub struct Livery {
 }
 
 impl Livery {
-    pub fn check_if_conflict(& self) -> Conflict {
+    pub fn check_if_conflict(& self, state: &State) -> Conflict {
         let mut conflict = Conflict::None;
         let mut car_json_conflict = false;
 
         if let Some(car) = &self.car_json {
-            if car.get_target().exists() {
+            if car.get_target(state).exists() {
                 car_json_conflict = true;
-                if car.is_same_as_target() {
+                if car.is_same_as_target(state) {
                     conflict = Conflict::Identical;
                 } else {
                     conflict = Conflict::CarOnly;
@@ -117,7 +119,7 @@ impl Livery {
             }
         }
 
-        if let Some(folder) = self.get_livery_folder() {
+        if let Some(folder) = self.get_livery_folder(state) {
             if folder.exists() {
                 // we don't have to flag a conflict yet
                 let iter = self.livery_files.iter();
@@ -128,10 +130,10 @@ impl Livery {
                         "README.txt" => (), // info that is not relevant, although if present probably means relevant files will also be present and have a conflict
                         "awesome.txt" => (), // info that is not relevant
                         _ => {
-                            if item.get_target().exists() {
+                            if item.get_target(state).exists() {
                                 conflict = match conflict {
                                     Conflict::None => {
-                                        if item.is_same_as_target() {
+                                        if item.is_same_as_target(state) {
                                             Conflict::Identical 
                                         } else {
                                             return Conflict::LiveryOnly;
@@ -141,7 +143,7 @@ impl Livery {
                                         return Conflict::Both;
                                     },
                                     Conflict::Identical => {
-                                        if item.is_same_as_target() {
+                                        if item.is_same_as_target(state) {
                                             Conflict::Identical 
                                         } else if car_json_conflict {
                                             return Conflict::Both;
@@ -163,8 +165,8 @@ impl Livery {
         conflict
     }
 
-    fn get_livery_folder(& self) -> Option<PathBuf> {
-        let mut folder = super::get_acc_folder();
+    fn get_livery_folder(& self, state: &State) -> Option<PathBuf> {
+        let mut folder = state.root_folder.clone();
         folder.push(ACC_CUSTOMS_FOLDER_NAME);
         folder.push(ACC_LIVERY_FOLDER_NAME);
         
@@ -173,14 +175,14 @@ impl Livery {
         Some(folder)
     }
 
-    pub fn write(&self) -> io::Result<()> {
+    pub fn write(&self, state: &State) -> io::Result<()> {
         // Setting up car.json
         if let Some(car) = &self.car_json {
-            fs::write(car.get_target(), car.file.clone())?;
+            fs::write(car.get_target(state), car.file.clone())?;
         }
 
         // Creating the folder if necessary
-        if let Some(folder) = self.get_livery_folder() {
+        if let Some(folder) = self.get_livery_folder(state) {
             if !folder.exists() {
                 fs::create_dir_all(folder)?;
             }
@@ -189,7 +191,7 @@ impl Livery {
         // Writing the livery files
         let iter = self.livery_files.iter();
         for item in iter {
-            fs::write(item.get_target(), item.file.clone())?;
+            fs::write(item.get_target(state), item.file.clone())?;
         }
 
         Ok(())
@@ -197,14 +199,14 @@ impl Livery {
 }
 
 /// Finds and read a specific car.json within the cars folder of ACC (aka one that is already installed)
-pub fn get_car_file(car: &String) -> Option<ZipLiveryContent> {
+pub fn get_car_file(car: &String, state: &State) -> Option<ZipLiveryContent> {
     let mut name = PathBuf::from(car);
     name.set_extension("json");
     let name = get_filename(&name);
 
     let file = ZipLiveryContent { upper: CustomFolder::Cars, name, file: Vec::<u8>::new()};
-    if file.get_target().exists() {
-        if let Ok(content) = fs::read(file.get_target()) {
+    if file.get_target(state).exists() {
+        if let Ok(content) = fs::read(file.get_target(state)) {
             return Some(ZipLiveryContent { upper: file.upper, name: file.name, file: content});
         }
     }
@@ -213,8 +215,8 @@ pub fn get_car_file(car: &String) -> Option<ZipLiveryContent> {
 }
 
 /// Read all files out of a specific folder within the livery folder of ACC (aka one that is already installed)
-pub fn get_livery_files(livery: &String) -> Option<Vec<ZipLiveryContent>> {
-    let mut folder = super::get_acc_folder();
+pub fn get_livery_files(livery: &String, state: &State) -> Option<Vec<ZipLiveryContent>> {
+    let mut folder = state.root_folder.clone();
 
     folder.push(ACC_CUSTOMS_FOLDER_NAME);
     folder.push(ACC_LIVERY_FOLDER_NAME);
@@ -238,8 +240,8 @@ pub fn get_livery_files(livery: &String) -> Option<Vec<ZipLiveryContent>> {
 }
 
 /// Returns all car.json from the cars folder of ACC (aka all currently installed)
-pub fn get_all_car_json() -> Vec<ZipLiveryContent> {
-    let mut folder = super::get_acc_folder();
+pub fn get_all_car_json(state: &State) -> Vec<ZipLiveryContent> {
+    let mut folder = state.root_folder.clone();
 
     folder.push(ACC_CUSTOMS_FOLDER_NAME);
     folder.push(ACC_CAR_FOLDER_NAME);

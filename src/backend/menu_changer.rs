@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use json::JsonValue;
 use serde::{Serialize, Deserialize};
 
+use crate::State;
+
 use super::SafeRead;
 
 
@@ -14,19 +16,19 @@ enum ConfigName {
 
 }
 
-fn get_config_file(filename: ConfigName) -> Option<(PathBuf, JsonValue)> {
+fn get_config_file(filename: ConfigName, state: &State) -> Option<(PathBuf, JsonValue)> {
     let name = match filename {
         ConfigName::MenuSettings => "menuSettings"
     };
 
-    return super::get_config_file(ACC_CONFIG_FOLDER_NAME, name);
+    return super::get_config_file(state, ACC_CONFIG_FOLDER_NAME, name);
 }
 
-pub fn set_dds_generation(state: bool) -> Option<bool> {
-    if let Some((path, mut content)) = get_config_file(ConfigName::MenuSettings){
+pub fn set_dds_generation(mode_state: bool, state: &State) -> Option<bool> {
+    if let Some((path, mut content)) = get_config_file(ConfigName::MenuSettings, state){
         if let Some(old_state) = content.get("texDDS") {
             if let Some(old_state) = old_state.as_i32() {
-                let state_i = match state { true => 1, false => 0 };
+                let state_i = match mode_state { true => 1, false => 0 };
                 
                 if old_state != state_i {
                     //updating
@@ -51,8 +53,8 @@ pub struct GraphicSettings {
     pub fullscreen: bool
 } 
 
-pub fn set_graphic_settings(settings: GraphicSettings) -> Option<GraphicSettings> {
-    if let Some((path, mut content)) = get_config_file(ConfigName::MenuSettings){
+pub fn set_graphic_settings(settings: GraphicSettings, state: &State) -> Option<GraphicSettings> {
+    if let Some((path, mut content)) = get_config_file(ConfigName::MenuSettings, state){
         if let Some(graphic) = content.get("graphicOptions") {
             let mut graphic_new = graphic.clone();
             
@@ -137,8 +139,8 @@ pub struct AudioSettings {
     pub music: f64
 } 
 
-pub fn set_audio_settings(settings: AudioSettings) -> Option<AudioSettings> {
-    if let Some((path, mut content)) = get_config_file(ConfigName::MenuSettings){
+pub fn set_audio_settings(settings: AudioSettings, state: &State) -> Option<AudioSettings> {
+    if let Some((path, mut content)) = get_config_file(ConfigName::MenuSettings, state){
         if let Some(audio) = content.get("audio") {
             let mut audio_new = audio.clone();
 

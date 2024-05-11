@@ -1,6 +1,9 @@
 use std::{path::{PathBuf, Path}, fs};
 
 use json::{JsonValue, stringify_pretty};
+use proton_finder::GameDrive;
+
+use crate::State;
 
 pub mod livery_ops;
 pub mod menu_changer;
@@ -33,39 +36,40 @@ pub const DATE_FORMAT_STR: &str = "%Y.%m.%d";
 
 pub const FILE_ENDING: &str = "json";
 
-pub fn get_acc_folder() -> PathBuf {
-    let mut root_path = if cfg!(target_os = "windows") {
-        dirs::document_dir().unwrap_or_default()
-    } else {
-        let mut home = dirs::home_dir().unwrap_or_default();
-        home.push(".local/share/Steam/steamapps/compatdata/805550/pfx/drive_c/users/steamuser/Documents");
-        home
+
+pub fn get_acc_folder() -> Result<Option<PathBuf>,Option<PathBuf>> {
+    let (game_drive, err) = match proton_finder::get_game_drive(805550) {
+        Ok(res) => (res, false),
+        Err(res) => (res, true)
     };
-    root_path.push(ACC_ROOT_FOLDER_NAME);
 
-    if !root_path.exists() {
-        let user_dir = root_path.parent();
 
-        if user_dir.is_none() {
-            //We are in deep trouble
-            panic!("Unable to find user path, therefore not able to access ACC folder");
-        } else if !user_dir.expect("we checked for none already").exists() {
-            panic!("Documents folder does somehow not exist, unable to access ACC folder");
+    fn internal_pathing(game_drive: Option<GameDrive>) -> Option<PathBuf> {
+        let mut root_path = game_drive?.document_dir()?;
+        root_path.push(ACC_ROOT_FOLDER_NAME);
+
+        if root_path.is_dir() {
+            let mut builder = root_path.clone();
+
+            builder.push(livery_ops::ACC_CUSTOMS_FOLDER_NAME);
+
+            if builder.is_dir() {
+                return Some(root_path);
+            }
         }
 
-        //Seems ACC folder does not exist, lets generate
-        if fs::create_dir(root_path.as_path()).is_ok() {
-            println!("ACC folder did not exist, we created the folder, but you should install the game");
-        } else {
-            panic!("Failed to create the ACC folder... Do you have the game installed");
-        }
+        None
     }
-
-    root_path
+    
+    let res = internal_pathing(game_drive);
+    match err {
+        false => Ok(res),
+        true => Err(res)
+    }
 }
 
-fn get_config_file(foldername: &str, filename: &str) -> Option<(PathBuf, JsonValue)> {
-    let mut folder = get_acc_folder();
+fn get_config_file(state: &State, foldername: &str, filename: &str) -> Option<(PathBuf, JsonValue)> {
+    let mut folder = state.root_folder.clone();
 
     folder.push(foldername);
     
